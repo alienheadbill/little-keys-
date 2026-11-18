@@ -47,3 +47,7 @@ The GitHub Actions browser suite uses Chromium and WebKit. It tests synthetic WA
 - The browser AI model may require a desktop-class device; use the desktop separator when it cannot load.
 - Quantization is approximate and may create artifacts. Keep the original.
 - Browser WAV and MP3 exports are supported. The desktop script exports both too.
+
+## Playback troubleshooting
+
+The preview uses the browser's native audio player and displays a changing playback position. If playback is blocked, the app reports an error or a stalled timer. On iPhone, verify device volume and Bluetooth audio destination, then try the WAV download as a fallback. The original recordings are untouched.
