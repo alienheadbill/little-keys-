@@ -13,7 +13,11 @@ Recordings stay on your device and are never uploaded by the app. Do not upload 
 
 ## Limitations
 - MP4 decoding depends on browser support; on iPhone, convert to M4A with Shortcuts → Encode Media → Audio Only if needed.
-- Automatic speech separation, AI cleaning, beat matching, and MIDI conversion are not yet supported.
+- Automatic phrase suggestions use loudness/onset cues (not an AI model) and require listening.
+- BPM snapping sets a 4/4 loop duration; it does not time-stretch or quantize the original performance.
+- Optional 12 ms edge fades help avoid clicks; the gentle gate reduces low-level signal but does not isolate piano or remove overlapping speech.
+- Saved WAV clips use IndexedDB local browser storage; backups are still necessary because browsers can clear it.
+- Full AI voice/piano separation, MP3 export, and MIDI conversion are not yet supported.
 - Saved sample cuts are temporary and disappear on refresh; download the WAVs to keep them.
 - Long videos may use significant device memory.
 
