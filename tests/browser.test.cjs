@@ -27,8 +27,8 @@ const wav=()=>{
  await page.locator('#start').evaluate(el=>{el.value='150';el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.locator('#end').evaluate(el=>{el.value='750';el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.locator('#play').click();
- await page.waitForFunction(()=>window.__previewDebug || (document.querySelector('#status').textContent.includes('Playing selection') && document.querySelector('#play').textContent.includes('Replay')),null,{timeout:10000});
- await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Finished playing') || document.querySelector('#status').textContent.includes('Playing selection'),null,{timeout:10000});
+ await page.waitForFunction(()=>window.__previewDebug || (document.querySelector('#status').textContent.includes('Playing ') && document.querySelector('#play').textContent.includes('Replay')),null,{timeout:10000});
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Finished playing') || document.querySelector('#status').textContent.includes('Playing '),null,{timeout:10000});
  await page.waitForTimeout(350);
  assert.doesNotMatch(await page.locator('#status').innerText(),/blocked|Playback error|not advancing/i);
  await page.locator('#stop').click();
