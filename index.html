@@ -94,7 +94,7 @@ file.addEventListener('change',function(){if(file.files&&file.files[0])importFil
 start.addEventListener('input',function(){if(Number(start.value)>=Number(end.value))end.value=Math.min(1000,Number(start.value)+1);update()});
 end.addEventListener('input',function(){if(Number(end.value)<=Number(start.value))start.value=Math.max(0,Number(end.value)-1);update()});
 canvas.addEventListener('pointerdown',function(e){if(!buffer)return;var r=canvas.getBoundingClientRect(),x=Math.max(0,Math.min(1000,Math.round((e.clientX-r.left)/r.width*1000)));if(Math.abs(x-Number(start.value))<Math.abs(x-Number(end.value)))start.value=Math.min(x,Number(end.value)-1);else end.value=Math.max(x,Number(start.value)+1);update()});
-document.getElementById('play').addEventListener('click',function(){play().catch(function(e){status.textContent='Playback failed: '+e.message})});
+document.getElementById('play').addEventListener('click',function(){try{play()}catch(e){status.textContent='Playback failed: '+e.message;stop()}});
 document.getElementById('stop').addEventListener('click',stop);
 document.getElementById('all').addEventListener('click',function(){start.value=0;end.value=1000;update()});
 document.getElementById('save').addEventListener('click',function(){if(!buffer)return;var r=range();if(r[1]<=r[0])return;cuts.push({a:r[0],b:r[1],name:document.getElementById('name').value||'Eden sample',category:document.getElementById('category').value});persistCut(r[0],r[1],document.getElementById('name').value||'Eden sample',document.getElementById('category').value);render();status.textContent='Saved cut '+cuts.length+'. Export WAV before closing this tab.'});
