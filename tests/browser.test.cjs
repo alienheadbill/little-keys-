@@ -1,0 +1,54 @@
+const {chromium}=require('playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const http=require('node:http');
+const path=require('node:path');
+const root=path.join(__dirname,'..');
+const wav=()=>{
+ const sr=8000,n=sr*2, b=Buffer.alloc(44+n*2);
+ b.write('RIFF',0);b.writeUInt32LE(36+n*2,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(sr,24);b.writeUInt32LE(sr*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(n*2,40);
+ for(let i=0;i<n;i++) b.writeInt16LE(Math.round(Math.sin(2*Math.PI*440*i/sr)*8000),44+i*2); return b;
+};
+(async()=>{
+ const server=http.createServer((req,res)=>{let name=decodeURIComponent((req.url||'/').split('?')[0]);if(name==='/')name='/index.html';if(name!=='/index.html'){res.writeHead(404);res.end();return}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(fs.readFileSync(path.join(root,'index.html')))});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ const port=server.address().port,browser=await chromium.launch({headless:true});
+ const errors=[];
+ try{
+ const page=await browser.newPage({acceptDownloads:true});
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('http://127.0.0.1:'+port);
+ assert.match(await page.title(),/Little Keys/);
+ await page.locator('#file').setInputFiles({name:'test.wav',mimeType:'audio/wav',buffer:wav()});
+ await page.locator('#editor').waitFor({state:'visible'});
+ assert.match(await page.locator('#status').innerText(),/Ready/);
+ await page.locator('#start').evaluate(el=>{el.value='150';el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.locator('#end').evaluate(el=>{el.value='750';el.dispatchEvent(new Event('input',{bubbles:true}))});
+ await page.locator('#play').click();
+ await page.waitForTimeout(150);
+ await page.locator('#stop').click();
+ await page.locator('#bpm').fill('120');
+ await page.locator('#bars').selectOption('1');
+ await page.locator('#snap').click();
+ await page.locator('#suggest').click();
+ const promise=page.waitForEvent('download');
+ await page.locator('#export').click();
+ const download=await promise;
+ assert.match(download.suggestedFilename(),/\.wav$/);
+ const save=path.join(require('node:os').tmpdir(),'little-keys-check.wav');
+ await download.saveAs(save);
+ const exported=fs.readFileSync(save);
+ assert.equal(exported.toString('ascii',0,4),'RIFF');
+ assert.equal(exported.toString('ascii',8,12),'WAVE');
+ assert.ok(exported.length>44,'WAV has audio frames');
+ await page.locator('#save').click();
+ await page.waitForFunction(()=>document.querySelectorAll('#library li').length>=1);
+ await page.reload();
+ await page.waitForFunction(()=>document.querySelector('#library').textContent.includes('test sample'));
+ await page.locator('#file').setInputFiles({name:'test.mp4',mimeType:'video/mp4',buffer:Buffer.from('dummy')});
+ assert.match(await page.locator('#status').innerText(),/Shortcuts|conversion/i);
+ assert.equal(await page.locator('#editor').isVisible(),false);
+ assert.deepEqual(errors,[]);
+ console.log('PASS: render, audio import, selection, playback, BPM, suggestions, WAV integrity, IndexedDB persistence, MP4 fallback and no page errors');
+ }finally{await browser.close();await new Promise(r=>server.close(r))}
+})().catch(e=>{console.error(e);process.exitCode=1});
