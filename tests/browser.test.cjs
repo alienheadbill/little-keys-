@@ -27,7 +27,10 @@ const wav=()=>{
  await page.locator('#start').evaluate(el=>{el.value='150';el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.locator('#end').evaluate(el=>{el.value='750';el.dispatchEvent(new Event('input',{bubbles:true}))});
  await page.locator('#play').click();
- await page.waitForTimeout(150);
+ await page.waitForFunction(()=>window.__previewDebug || (document.querySelector('#status').textContent.includes('Playing selection') && document.querySelector('#play').textContent.includes('Replay')),null,{timeout:10000});
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Finished playing') || document.querySelector('#status').textContent.includes('Playing selection'),null,{timeout:10000});
+ await page.waitForTimeout(350);
+ assert.doesNotMatch(await page.locator('#status').innerText(),/blocked|Playback error|not advancing/i);
  await page.locator('#stop').click();
  await page.locator('#bpm').fill('120');
  await page.locator('#bars').selectOption('1');
@@ -94,6 +97,6 @@ const wav=()=>{
 
  assert.deepEqual(errors,[]);
  console.log('PASS Chromium: render, import, playback, BPM, loop suggestions, reversible timing, WAV, IndexedDB, mocked AI, MP4 actual extraction and no errors');
- const safari=await webkit.launch({headless:true});try{const safariPage=await safari.newPage({acceptDownloads:true});await safariPage.goto('http://127.0.0.1:'+port);await safariPage.locator('#file').setInputFiles({name:'test.wav',mimeType:'audio/wav',buffer:wav()});await safariPage.locator('#editor').waitFor({state:'visible'});console.log('PASS WebKit: site loads and WAV audio imports')}finally{await safari.close()}
+ const safari=await webkit.launch({headless:true});try{const safariPage=await safari.newPage({acceptDownloads:true});await safariPage.goto('http://127.0.0.1:'+port);await safariPage.locator('#file').setInputFiles({name:'test.wav',mimeType:'audio/wav',buffer:wav()});await safariPage.locator('#editor').waitFor({state:'visible'});await safariPage.locator('#play').click();await safariPage.waitForFunction(()=>document.querySelector('#status').textContent.includes('Playing selection')||document.querySelector('#status').textContent.includes('Finished playing'),null,{timeout:12000});await safariPage.waitForTimeout(350);assert.doesNotMatch(await safariPage.locator('#status').innerText(),/blocked|Playback error|not advancing/i);await safariPage.locator('#stop').click();console.log('PASS WebKit: site loads, WAV imports, and native playback starts')}finally{await safari.close()}
  }finally{await browser.close();await new Promise(r=>server.close(r))}
 })().catch(e=>{console.error(e);process.exitCode=1});
