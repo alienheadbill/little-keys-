@@ -9,7 +9,7 @@ https://alienheadbill.github.io/little-keys-/
 ## Using it
 
 1. Select MP4/MOV video or an M4A/MP3/WAV audio recording.
-2. MP4/MOV: tap **Extract audio from video**. Conversion uses the browser's native video decoder, runs at normal playback speed, and needs the tab kept open. On iPhone, if this fails, Shortcuts → Select Photos → Encode Media (**Audio Only**) → Save File creates an M4A.
+2. MP4/MOV: tap **Extract audio from video**. The app first tries Mediabunny's faster audio-only track extraction. If audio decoding is unavailable, it falls back to real-time browser playback capture, which needs the tab kept open. On iPhone, if this fails, Shortcuts → Select Photos → Encode Media (**Audio Only**) → Save File creates an M4A.
 3. View the waveform, adjust start/end sliders, audition and save a sample. Export WAV or MP3 backups. The MP3 encoder is included locally (LAME), so it needs no conversion service.
 4. **Suggest phrases** finds candidate onsets using loudness. Review them by ear; a candidate is not necessarily a musical phrase.
 5. Set BPM and bars to snap the selected clip's *duration* to the bar grid. This does not time-stretch the waveform.
