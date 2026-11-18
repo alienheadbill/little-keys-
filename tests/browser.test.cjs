@@ -57,13 +57,13 @@ const wav=()=>{
  await page.locator('#file').setInputFiles({name:'test.wav',mimeType:'audio/wav',buffer:wav()});
  await page.locator('#editor').waitFor({state:'visible'});
  await page.locator('#detectSpeech').click();
+ await page.waitForFunction(()=>document.querySelector('#speechResult').textContent.includes('possible speech segments'),null,{timeout:15000});
  assert.match(await page.locator('#speechResult').innerText(),/1 possible speech segments/i);
  await page.locator('#speechExport').selectOption('mute');
  await page.locator('#aiSeparate').evaluate(el=>el.scrollIntoViewIfNeeded?.());
  await page.route('https://esm.sh/web-audio-separation@0.3.1?bundle&target=es2022',route=>route.fulfill({status:200,contentType:'application/javascript',headers:{'access-control-allow-origin':'*'},body:"export function createSeparator(){return {loadModel:async()=>{},separate:async(url)=>{const b=await (await fetch(url)).blob();return [URL.createObjectURL(b),URL.createObjectURL(b)]}}}"}));
  await page.locator('#aiSeparate').click();
- await page.locator('#aiPiano').waitFor({state:'visible'});
- await page.waitForFunction(()=>!document.querySelector('#aiPiano').disabled,{timeout:15000});
+ await page.waitForFunction(()=>!document.querySelector('#aiPiano').disabled,null,{timeout:15000});
  await page.locator('#aiPiano').click();
  await page.locator('#aiRestore').click();
  // Native video decoding -> local MediaRecorder -> WAV editor (1-second synthetic MP4).
