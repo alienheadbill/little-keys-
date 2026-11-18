@@ -12,7 +12,7 @@ const wav=()=>{
 (async()=>{
  const server=http.createServer((req,res)=>{let name=decodeURIComponent((req.url||'/').split('?')[0]);if(name==='/')name='/index.html';if(name!=='/index.html'){res.writeHead(404);res.end();return}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(fs.readFileSync(path.join(root,'index.html')))});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const port=server.address().port,browser=await chromium.launch({headless:true});
+ const port=server.address().port,browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
  const errors=[];
  try{
  const page=await browser.newPage({acceptDownloads:true});
