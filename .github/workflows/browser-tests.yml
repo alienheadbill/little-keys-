@@ -18,3 +18,8 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
       - name: Run browser tests
         run: node tests/browser.test.cjs
+      - name: Probe real AI stem model (external dependency)
+        continue-on-error: true
+        run: node tests/ai-online.test.cjs
+      - name: Check desktop script syntax
+        run: python3 -m py_compile desktop/separate.py
