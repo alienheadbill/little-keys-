@@ -88,10 +88,35 @@ async function showLibrary(){var ul=document.getElementById('library');try{var d
 document.getElementById('refreshLibrary').addEventListener('click',showLibrary);showLibrary();
 
 
+async function decodeVideoFast(file,progress){
+ var m=await import('https://esm.sh/mediabunny@1.66.0?bundle&target=es2022');
+ var input=new m.Input({formats:m.ALL_FORMATS,source:new m.BlobSource(file)});
+ var output=new m.Output({format:new m.WavOutputFormat(),target:new m.BufferTarget()});
+ var conversion=await m.Conversion.init({input:input,output:output,video:{discard:true}});
+ if(!conversion.isValid)throw Error('No decodable audio track in this video');
+ conversion.onProgress=function(n){progress.value=Math.round(n*100);status.textContent='Fast audio extraction: '+Math.round(n*100)+'%'};
+ await conversion.execute();
+ if(!output.target.buffer)throw Error('No audio file created');
+ return (await context()).decodeAudioData(output.target.buffer.slice(0));
+}
+function finishVideo(bufferValue){
+ buffer=bufferValue;originalBuffer=bufferValue;aiStems=null;resetAI();speechRegions=[];renderSpeech();
+ sourceName=pendingVideo.name;start.value=0;end.value=1000;cuts=[];render();
+ document.getElementById('name').value=pendingVideo.name.replace(/\.[^.]+$/,'')+' sample';
+ document.getElementById('details').textContent=sourceName+' · '+seconds(buffer.duration)+' · '+buffer.sampleRate+' Hz · '+buffer.numberOfChannels+' channel(s)';
+ editor.classList.remove('hidden');document.getElementById('tools').classList.remove('hidden');document.getElementById('videoImport').classList.add('hidden');status.textContent='Video audio imported. Review the waveform and export WAV or MP3.';update();
+}
 async function convertVideo(){
  if(!pendingVideo)return;
  var btn=document.getElementById('extractVideo'),progress=document.getElementById('videoProgress');btn.disabled=true;progress.value=0;
- var url=URL.createObjectURL(pendingVideo),video=document.createElement('video');videoURL=url;videoProcess=video;video.preload='auto';video.playsInline=true;video.src=url;video.style.display='none';document.body.appendChild(video);
+ status.textContent='Trying fast private audio extraction (no video decode)…';
+ try{
+  var fast=await decodeVideoFast(pendingVideo,progress);
+  if(!fast.length)throw Error('Empty decoded file');
+  finishVideo(fast);btn.disabled=false;return;
+ }catch(fastError){status.textContent='Fast import unsupported ('+fastError.message+'). Trying native playback extraction…';}
+
+ var url=URL.createObjectURL(pendingVideo),video=document.createElement('video');videoURL=url;videoProcess=video;video.preload='auto';video.playsInline=true;video.src=url;video.style.cssText='position:fixed;width:1px;height:1px;opacity:.01;pointer-events:none;bottom:0;right:0';document.body.appendChild(video);
  var recorder=null,stream=null,mediaSource=null,dest=null,chunks=[],audio=null,timer=null;
  function cleanup(){clearInterval(timer);try{video.pause()}catch(e){}try{mediaSource&&mediaSource.disconnect()}catch(e){}try{dest&&dest.disconnect()}catch(e){}try{stream&&stream.getTracks().forEach(function(t){t.stop()})}catch(e){}video.remove();URL.revokeObjectURL(url);videoProcess=null;videoURL=null;btn.disabled=false}
  try{
@@ -111,12 +136,8 @@ async function convertVideo(){
   recorder.stop();await result;progress.value=100;
   if(!chunks.length)throw Error('No audio captured');
   status.textContent='Decoding extracted audio…';var blob=new Blob(chunks,{type:mime});var array=await blob.arrayBuffer();
-  buffer=await audio.decodeAudioData(array);originalBuffer=buffer;aiStems=null;resetAI();speechRegions=[];renderSpeech();
-  if(!buffer.length)throw Error('No audio decoded');
-  sourceName=pendingVideo.name;start.value=0;end.value=1000;cuts=[];render();
-  document.getElementById('name').value=pendingVideo.name.replace(/\.[^.]+$/,'')+' sample';
-  document.getElementById('details').textContent=sourceName+' · '+seconds(buffer.duration)+' · '+buffer.sampleRate+' Hz · '+buffer.numberOfChannels+' channel(s)';
-  editor.classList.remove('hidden');document.getElementById('tools').classList.remove('hidden');document.getElementById('videoImport').classList.add('hidden');status.textContent='Video audio imported. Review the waveform and export WAV.';update();
+  var decoded=await audio.decodeAudioData(array);
+  if(!decoded.length)throw Error('No audio decoded');finishVideo(decoded);
  }catch(e){status.textContent='Video import failed: '+e.message+'. On iPhone, use Shortcuts → Encode Media → Audio Only → Save File, then import M4A.';if(recorder&&recorder.state!=='inactive')try{recorder.stop()}catch(_){}}
  finally{cleanup()}
 }
