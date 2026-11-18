@@ -14,7 +14,7 @@
 <p id="duration" class="numbers"></p>
 <label for="name">Sample name</label><input id="name" type="text" value="Eden's first keys" maxlength="90" style="width:100%">
 <label for="category">Keep this moment as</label><select id="category"><option value="Piano">🎹 Piano phrase</option><option value="Family moment">💗 Family moment</option><option value="Piano + voices">🎙️ Piano + voices</option></select>
-<div class="buttons"><button id="save" class="primary">＋ Save sample</button><button id="export">↓ Export selected WAV</button></div><p class="hint">This first version does not automatically remove speech, quantize notes, or turn performances into MIDI. Use the sliders to avoid dialogue that covers important piano notes.</p></section>
+<div class="buttons"><button id="save" class="primary">＋ Save sample</button><button id="export">↓ Export selected WAV</button><button id="exportMp3">↓ Export selected MP3</button></div><p class="hint">This first version does not automatically remove speech, quantize notes, or turn performances into MIDI. Use the sliders to avoid dialogue that covers important piano notes.</p></section>
 <section id="tools" class="hidden"><h2>3. Loop workshop</h2>
 <p class="hint">Suggestions use changes in loudness, not AI transcription. Listen before deciding whether a clip includes speech.</p>
 <div class="row"><div><label for="bpm">Tempo (BPM)</label><input id="bpm" type="number" min="40" max="240" value="100" style="width:100%;color:white;background:#111b2e;padding:11px;border:1px solid #34425b;border-radius:11px"></div><div><label for="bars">Loop length</label><select id="bars" style="width:100%"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option><option value="8">8 bars</option></select></div></div>
@@ -192,6 +192,31 @@ document.getElementById('aiSeparate').addEventListener('click',async function(){
  }catch(e){box.textContent='AI separation could not run on this device or network: '+e.message+'. The original is safe. The desktop Demucs workflow is available in GitHub.'}
  finally{btn.disabled=false}
 });
+
+
+async function exportMp3(){
+ if(!buffer)return;var btn=document.getElementById('exportMp3'),r=range();btn.disabled=true;
+ try{
+  status.textContent='Preparing MP3 export…';
+  if(!window.lamejs)await loadExternalScript('./vendor/lame.min.js');
+  if(!window.lamejs||!window.lamejs.Mp3Encoder)throw Error('MP3 encoder unavailable');
+  var pcm=wav(r[0],r[1]),a=await context(),decoded=await a.decodeAudioData(await pcm.arrayBuffer());
+  var offline=new OfflineAudioContext(Math.min(2,decoded.numberOfChannels),Math.max(1,Math.ceil(decoded.duration*44100)),44100);
+  var src=offline.createBufferSource();src.buffer=decoded;src.connect(offline.destination);src.start(0);
+  var rendered=await offline.startRendering(),channels=Math.min(2,rendered.numberOfChannels),encoder=new window.lamejs.Mp3Encoder(channels,44100,192),parts=[],block=1152;
+  var left=rendered.getChannelData(0),right=channels===2?rendered.getChannelData(1):null;
+  for(var i=0;i<rendered.length;i+=block){
+   var count=Math.min(block,rendered.length-i),l=new Int16Array(count),rr=channels===2?new Int16Array(count):null;
+   for(var j=0;j<count;j++){var lv=Math.max(-1,Math.min(1,left[i+j]));l[j]=lv<0?lv*32768:lv*32767;if(rr){var rv=Math.max(-1,Math.min(1,right[i+j]));rr[j]=rv<0?rv*32768:rv*32767}}
+   var out=channels===2?encoder.encodeBuffer(l,rr):encoder.encodeBuffer(l);if(out.length)parts.push(new Uint8Array(out));
+  }
+  var tail=encoder.flush();if(tail.length)parts.push(new Uint8Array(tail));
+  var mp3=new Blob(parts,{type:'audio/mpeg'});downloadStem(mp3,safe(document.getElementById('name').value)+'.mp3');
+  status.textContent='MP3 exported at 192 kbps. Save it in Files/Downloads.';
+ }catch(e){status.textContent='MP3 export failed: '+e.message+'. WAV export still works.'}
+ finally{btn.disabled=false}
+}
+document.getElementById('exportMp3').addEventListener('click',exportMp3);
 
 })();
 </script></body></html>
