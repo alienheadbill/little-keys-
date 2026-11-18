@@ -20,6 +20,10 @@
 <div class="row"><div><label for="bpm">Tempo (BPM)</label><input id="bpm" type="number" min="40" max="240" value="100" style="width:100%;color:white;background:#111b2e;padding:11px;border:1px solid #34425b;border-radius:11px"></div><div><label for="bars">Loop length</label><select id="bars" style="width:100%"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option><option value="8">8 bars</option></select></div></div>
 <div class="buttons"><button id="suggest">✨ Suggest phrases</button><button id="snap">♬ Snap length to BPM</button><button id="fade">◖ Toggle edge fades: ON</button></div>
 <p id="analysis" class="hint"></p><ul id="suggestions"></ul>
+<h2>AI source separation</h2><p class="hint">Try a real MDX-Net vocal/instrumental separation model in your browser. First run downloads about 67 MB of model weights. Processing may be slow or exceed iPhone memory; desktop is more reliable. No recording is uploaded.</p>
+<div class="buttons"><button id="aiSeparate">✨ Separate voices from piano</button><button id="aiRestore">↩ Restore original</button></div><div id="aiStatus" class="hint" role="status" aria-live="polite">Not processed.</div>
+<div class="buttons"><button id="aiPiano" disabled>🎹 Edit piano-only estimate</button><button id="aiVoices" disabled>💗 Edit voice estimate</button><button id="aiDownloadPiano" disabled>↓ Download piano stem</button><button id="aiDownloadVoices" disabled>↓ Download voices stem</button></div>
+<p class="hint">AI separation can distort notes or leave voice bleed. Compare with the original; preserve family moments as separate cuts. If your device cannot run the model, the desktop Demucs companion in the repository is an alternative.</p>
 <h2>Voice activity and timing</h2>
 <p class="hint">Optional Silero AI speech detection runs locally after downloading a model. It marks likely speech; it cannot separate voices from notes occupying the same moments.</p>
 <div class="buttons"><button id="detectSpeech">🗣 Detect speech (AI)</button><button id="clearSpeech">Clear speech marks</button></div>
@@ -67,7 +71,7 @@ document.getElementById('all').addEventListener('click',function(){start.value=0
 document.getElementById('save').addEventListener('click',function(){if(!buffer)return;var r=range();if(r[1]<=r[0])return;cuts.push({a:r[0],b:r[1],name:document.getElementById('name').value||'Eden sample',category:document.getElementById('category').value});persistCut(r[0],r[1],document.getElementById('name').value||'Eden sample',document.getElementById('category').value);render();status.textContent='Saved cut '+cuts.length+'. Export WAV before closing this tab.'});
 document.getElementById('export').addEventListener('click',function(){if(!buffer)return;var r=range();download(r[0],r[1],document.getElementById('name').value)});
 
-var edgeFades=true,speechRegions=[],originalBuffer=null;
+var edgeFades=true,speechRegions=[],originalBuffer=null,aiStems=null;
 document.getElementById('fade').addEventListener('click',function(){edgeFades=!edgeFades;this.textContent='◖ Toggle edge fades: '+(edgeFades?'ON':'OFF')});
 function selectSeconds(a,b){if(!buffer)return;var d=buffer.duration;start.value=Math.max(0,Math.min(999,Math.round(a/d*1000)));end.value=Math.max(Number(start.value)+1,Math.min(1000,Math.round(b/d*1000)));update()}
 document.getElementById('snap').addEventListener('click',function(){if(!buffer)return;var bpm=Number(document.getElementById('bpm').value),bars=Number(document.getElementById('bars').value);if(!Number.isFinite(bpm)||bpm<40||bpm>240){status.textContent='BPM must be 40–240.';return}var dur=240*bars/bpm,a=buffer.duration*Number(start.value)/1000;if(dur>buffer.duration){status.textContent='Loop is longer than the recording. Lower bar count or increase BPM.';return}selectSeconds(Math.min(a,buffer.duration-dur),Math.min(buffer.duration,Math.min(a,buffer.duration-dur)+dur));status.textContent='Loop selection snapped to '+bars+' bar(s) at '+bpm+' BPM (4/4). No time stretching applied.'});
@@ -107,7 +111,7 @@ async function convertVideo(){
   recorder.stop();await result;progress.value=100;
   if(!chunks.length)throw Error('No audio captured');
   status.textContent='Decoding extracted audio…';var blob=new Blob(chunks,{type:mime});var array=await blob.arrayBuffer();
-  buffer=await audio.decodeAudioData(array);originalBuffer=buffer;speechRegions=[];renderSpeech();
+  buffer=await audio.decodeAudioData(array);originalBuffer=buffer;aiStems=null;resetAI();speechRegions=[];renderSpeech();
   if(!buffer.length)throw Error('No audio decoded');
   sourceName=pendingVideo.name;start.value=0;end.value=1000;cuts=[];render();
   document.getElementById('name').value=pendingVideo.name.replace(/\.[^.]+$/,'')+' sample';
@@ -156,6 +160,37 @@ document.getElementById('timing').addEventListener('click',async function(){
   var count=Math.min(finish-begin,out.length-target);if(count<=0)continue;
   for(var c=0;c<buffer.numberOfChannels;c++){var dst=out.getChannelData(c),src=buffer.getChannelData(c);for(var j=0;j<count;j++){var edge=Math.min(j,count-1-j),gain=Math.min(1,edge/Math.max(1,Math.round(sr*.004)));dst[target+j]+=src[begin+j]*gain}}}
  buffer=out;update();document.getElementById('timingInfo').textContent='Quantized '+attacks.length+' detected attacks to '+sub+'th-note grid at '+bpm+' BPM. Listen for artifacts; Restore original if needed.';
+});
+
+
+function resetAI(){['aiPiano','aiVoices','aiDownloadPiano','aiDownloadVoices'].forEach(function(x){document.getElementById(x).disabled=true});document.getElementById('aiStatus').textContent='Not processed.'}
+function switchStem(stem){if(!aiStems)return;stop();buffer=stem==='piano'?aiStems.piano:aiStems.voices;start.value=0;end.value=1000;update();status.textContent=(stem==='piano'?'Piano estimate':'Voice estimate')+' selected. WAV export uses the selected stem.'}
+function downloadStem(blob,name){var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},60000)}
+document.getElementById('aiPiano').onclick=function(){switchStem('piano')};
+document.getElementById('aiVoices').onclick=function(){switchStem('voices')};
+document.getElementById('aiRestore').onclick=function(){if(originalBuffer){stop();buffer=originalBuffer;start.value=0;end.value=1000;update();status.textContent='Original recording restored.'}};
+document.getElementById('aiDownloadPiano').onclick=function(){if(aiStems)downloadStem(aiStems.pianoBlob,'little-keys-piano-ai.wav')};
+document.getElementById('aiDownloadVoices').onclick=function(){if(aiStems)downloadStem(aiStems.voiceBlob,'little-keys-voices-ai.wav')};
+document.getElementById('aiSeparate').addEventListener('click',async function(){
+ if(!originalBuffer)return;var btn=this,box=document.getElementById('aiStatus');btn.disabled=true;
+ try{
+  box.textContent='Loading browser AI runtime…';
+  var mod=await import('https://esm.sh/web-audio-separation@0.3.1?bundle&target=es2022');
+  if(typeof mod.createSeparator!=='function')throw Error('Browser AI module did not load');
+  var separator=mod.createSeparator('UVR-MDX-NET-Inst_HQ_3',{common:{onProgress:function(p){box.textContent='AI: '+p.stage+' '+Math.round(p.fraction*100)+'%'}}});
+  box.textContent='Downloading AI model (~67 MB first time)…';await separator.loadModel();
+  var saved=buffer;buffer=originalBuffer;var blob=wav(0,buffer.length);buffer=saved;
+  var url=URL.createObjectURL(blob),stems;
+  try{box.textContent='Separating voices and instrumental locally. Keep this tab open…';stems=await separator.separate(url)}finally{URL.revokeObjectURL(url)}
+  if(!Array.isArray(stems)||stems.length!==2)throw Error('Expected two AI stems');
+  // MDX separator emits the secondary vocals stem first and primary instrumental second.
+  var voiceBlob=await (await fetch(stems[0])).blob(),pianoBlob=await (await fetch(stems[1])).blob();
+  var audio=await context(),voiceBuffer=await audio.decodeAudioData(await voiceBlob.arrayBuffer()),pianoBuffer=await audio.decodeAudioData(await pianoBlob.arrayBuffer());
+  aiStems={piano:pianoBuffer,voices:voiceBuffer,pianoBlob:pianoBlob,voiceBlob:voiceBlob};
+  ['aiPiano','aiVoices','aiDownloadPiano','aiDownloadVoices'].forEach(function(x){document.getElementById(x).disabled=false});
+  box.textContent='Separation complete. Listen to both stems and export what you like. These are AI estimates.';
+ }catch(e){box.textContent='AI separation could not run on this device or network: '+e.message+'. The original is safe. The desktop Demucs workflow is available in GitHub.'}
+ finally{btn.disabled=false}
 });
 
 })();
