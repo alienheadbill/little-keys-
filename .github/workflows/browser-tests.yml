@@ -23,6 +23,8 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-1.56.1-${{ runner.os }}-${{ runner.arch }}
       - run: npx playwright install --with-deps chromium webkit
+      - name: Install FFmpeg for codec checks
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg
       - name: Run browser tests
         run: node tests/browser.test.cjs
       - name: Probe real AI stem model (external dependency)
