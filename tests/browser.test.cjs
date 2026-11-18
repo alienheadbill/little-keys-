@@ -46,7 +46,7 @@ const wav=()=>{
  await page.reload();
  await page.waitForFunction(()=>document.querySelector('#library').textContent.includes('test sample'));
  await page.locator('#file').setInputFiles({name:'test.mp4',mimeType:'video/mp4',buffer:Buffer.from('dummy')});
- assert.match(await page.locator('#status').innerText(),/Shortcuts|conversion/i);
+ assert.equal(await page.locator('#videoImport').isVisible(),true);
  assert.equal(await page.locator('#editor').isVisible(),false);
  assert.deepEqual(errors,[]);
  console.log('PASS: render, audio import, selection, playback, BPM, suggestions, WAV integrity, IndexedDB persistence, MP4 fallback and no page errors');
