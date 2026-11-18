@@ -12,7 +12,7 @@ const wav=()=>{
  for(let i=0;i<n;i++) b.writeInt16LE(Math.round(Math.sin(2*Math.PI*440*i/sr)*8000),44+i*2); return b;
 };
 (async()=>{
- const server=http.createServer((req,res)=>{let name=decodeURIComponent((req.url||'/').split('?')[0]);if(name==='/')name='/index.html';if(name!=='/index.html'){res.writeHead(404);res.end();return}res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(fs.readFileSync(path.join(root,'index.html')))});
+ const server=http.createServer((req,res)=>{let name=decodeURIComponent((req.url||'/').split('?')[0]);if(name==='/')name='/index.html';if(!['/index.html','/vendor/lame.min.js'].includes(name)){res.writeHead(404);res.end();return}res.writeHead(200,{'Content-Type':name.endsWith('.js')?'application/javascript':'text/html; charset=utf-8'});res.end(fs.readFileSync(path.join(root,name)))});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  const port=server.address().port,browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
  const errors=[];
@@ -46,6 +46,12 @@ const wav=()=>{
  assert.equal(exported.toString('ascii',0,4),'RIFF');
  assert.equal(exported.toString('ascii',8,12),'WAVE');
  assert.ok(exported.length>44,'WAV has audio frames');
+ const mp3promise=page.waitForEvent('download');
+ await page.locator('#exportMp3').click();
+ const mp3download=await mp3promise; assert.match(mp3download.suggestedFilename(),/\.mp3$/);
+ const mp3path=path.join(os.tmpdir(),'little-keys-test.mp3');await mp3download.saveAs(mp3path);
+ execFileSync('ffprobe',['-v','error','-select_streams','a:0','-show_entries','stream=codec_name','-of','default=noprint_wrappers=1',mp3path],{encoding:'utf8'}).includes('mp3')||assert.fail('exported MP3 not decodable');
+
  await page.locator('#save').click();
  await page.waitForFunction(()=>document.querySelectorAll('#library li').length>=1);
  await page.reload();
