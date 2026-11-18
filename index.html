@@ -49,9 +49,37 @@ function seconds(n){return Number(n).toFixed(2)+'s'}
 function range(){return [Math.floor(buffer.length*(Number(start.value)/1000)),Math.ceil(buffer.length*(Number(end.value)/1000))]}
 function update(){if(!buffer)return;var a=buffer.duration*Number(start.value)/1000,b=buffer.duration*Number(end.value)/1000;startLabel.textContent=seconds(a);endLabel.textContent=seconds(b);durationLabel.textContent='Selection: '+seconds(b-a);draw()}
 function draw(){if(!buffer)return;var w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);var ch=buffer.getChannelData(0),step=Math.max(1,Math.floor(ch.length/w));ctx.fillStyle='#9f8ffa';for(var x=0;x<w;x++){var from=x*step,to=Math.min(ch.length,from+step),peak=0;for(var j=from;j<to;j+=Math.max(1,Math.floor(step/30)))peak=Math.max(peak,Math.abs(ch[j]));var bar=Math.max(1,peak*(h-12));ctx.fillRect(x,(h-bar)/2,1,bar)}var a=Number(start.value)/1000*w,b=Number(end.value)/1000*w;ctx.fillStyle='rgba(7,10,20,.68)';ctx.fillRect(0,0,a,h);ctx.fillRect(b,0,w-b,h);ctx.strokeStyle='#ffbfd8';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(a,0);ctx.lineTo(a,h);ctx.moveTo(b,0);ctx.lineTo(b,h);ctx.stroke()}
-function stop(){if(source){try{source.stop()}catch(e){}source.disconnect();source=null}document.getElementById('play').textContent='▶ Play selection'}
+var previewAudio=null,previewURL=null,playbackHeartbeat=null,previewAttempt=0;
+function clearPreview(){if(playbackHeartbeat){clearInterval(playbackHeartbeat);playbackHeartbeat=null}if(previewAudio){previewAudio.onended=null;previewAudio.onerror=null;previewAudio.ontimeupdate=null;previewAudio.pause();previewAudio.removeAttribute('src');previewAudio.load();previewAudio=null}if(previewURL){URL.revokeObjectURL(previewURL);previewURL=null}}
+function stop(){previewAttempt++;clearPreview();if(source){try{source.stop()}catch(e){}try{source.disconnect()}catch(e){}source=null}document.getElementById('play').textContent='▶ Play selection'}
 async function context(){if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')await ac.resume();return ac}
-async function play(){if(!buffer)return;stop();var audio=await context(),r=range(),len=(r[1]-r[0])/buffer.sampleRate;if(len<=0)return;source=audio.createBufferSource();source.buffer=buffer;source.connect(audio.destination);var current=source;source.onended=function(){if(source===current)stop()};source.start(0,r[0]/buffer.sampleRate,len);document.getElementById('play').textContent='↻ Replay selection'}
+function play(){
+ if(!buffer){status.textContent='Import an audio recording first.';return}
+ stop();
+ var r=range(),len=(r[1]-r[0])/buffer.sampleRate;
+ if(len<=0){status.textContent='Choose a longer selection to hear.';return}
+ var attempt=previewAttempt,blob=wav(r[0],r[1]);
+ previewURL=URL.createObjectURL(blob);
+ // HTMLAudioElement playback follows Safari/iOS media handling more reliably than
+ // starting an AudioBufferSourceNode after an awaited AudioContext resume.
+ var player=new Audio();previewAudio=player;player.preload='auto';player.volume=1;player.src=previewURL;
+ player.onended=function(){if(previewAttempt===attempt){status.textContent='Finished playing selection.';stop()}};
+ player.onerror=function(){if(previewAttempt===attempt){status.textContent='Playback error: Safari could not play this WAV. Try Export WAV and open it in Files.';stop()}};
+ var startPromise=player.play();
+ document.getElementById('play').textContent='↻ Replay selection';
+ status.textContent='Starting preview ('+seconds(len)+')…';
+ Promise.resolve(startPromise).then(function(){
+  if(previewAttempt!==attempt)return;
+  status.textContent='Playing selection • '+seconds(len);
+  var last=player.currentTime,stalled=0;
+  playbackHeartbeat=setInterval(function(){
+   if(previewAttempt!==attempt||player.ended||player.paused)return;
+   if(player.currentTime<=last+.005)stalled++;else stalled=0;
+   last=player.currentTime;
+   if(stalled>=5){clearInterval(playbackHeartbeat);playbackHeartbeat=null;status.textContent='Audio is not advancing. Check iPhone silent mode, volume, Bluetooth output, or try Export WAV.'}
+  },400);
+ }).catch(function(e){if(previewAttempt!==attempt)return;status.textContent='Preview blocked by browser: '+e.message+'. Tap Play again or export the WAV.';stop()});
+}
 async function importFile(f){stop();buffer=null;editor.classList.add('hidden');document.getElementById('tools').classList.add('hidden');if(/\.(mp4|mov)$/i.test(f.name)||f.type.startsWith('video/')){pendingVideo=f;document.getElementById('videoImport').classList.remove('hidden');status.textContent='Video selected. Tap Extract audio. The app tries fast track-only decoding first, then a slower real-time method if needed.';return}document.getElementById('videoImport').classList.add('hidden');status.textContent='Reading '+f.name+'…';await new Promise(function(resolve){setTimeout(resolve,25)});try{var array=await f.arrayBuffer(),audio=await context();status.textContent='Decoding audio…';buffer=await audio.decodeAudioData(array);originalBuffer=buffer;speechRegions=[];renderSpeech();sourceName=f.name;start.value=0;end.value=1000;cuts=[];render();document.getElementById('name').value=f.name.replace(/\.[^.]+$/,'')+' sample';document.getElementById('details').textContent=f.name+' · '+seconds(buffer.duration)+' · '+buffer.sampleRate+' Hz · '+buffer.numberOfChannels+' channel(s)';editor.classList.remove('hidden');document.getElementById('tools').classList.remove('hidden');document.getElementById('suggestions').innerHTML='';document.getElementById('analysis').textContent='';status.textContent='Ready. Select the best notes, preview, then export.';update()}catch(e){status.textContent='Could not decode this recording. Try the M4A or WAV audio extracted from your video. Error: '+e.message;buffer=null}}
 function wav(a,b){var frames=b-a,channels=buffer.numberOfChannels,sr=buffer.sampleRate,out=new ArrayBuffer(44+frames*channels*2),view=new DataView(out),off=0;
 function str(s){for(var i=0;i<s.length;i++)view.setUint8(off++,s.charCodeAt(i))}
