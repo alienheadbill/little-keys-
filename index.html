@@ -20,6 +20,16 @@
 <div class="row"><div><label for="bpm">Tempo (BPM)</label><input id="bpm" type="number" min="40" max="240" value="100" style="width:100%;color:white;background:#111b2e;padding:11px;border:1px solid #34425b;border-radius:11px"></div><div><label for="bars">Loop length</label><select id="bars" style="width:100%"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option><option value="8">8 bars</option></select></div></div>
 <div class="buttons"><button id="suggest">✨ Suggest phrases</button><button id="snap">♬ Snap length to BPM</button><button id="fade">◖ Toggle edge fades: ON</button></div>
 <p id="analysis" class="hint"></p><ul id="suggestions"></ul>
+<h2>Voice activity and timing</h2>
+<p class="hint">Optional Silero AI speech detection runs locally after downloading a model. It marks likely speech; it cannot separate voices from notes occupying the same moments.</p>
+<div class="buttons"><button id="detectSpeech">🗣 Detect speech (AI)</button><button id="clearSpeech">Clear speech marks</button></div>
+<div id="speechResult" class="hint" role="status" aria-live="polite"></div><ul id="speechList"></ul>
+<label for="speechExport">Speech-region export treatment</label><select id="speechExport" style="width:100%">
+<option value="keep">Keep all speech</option><option value="mute">Fade down detected speech regions (may reduce piano too)</option></select>
+<p class="hint">For clean piano with overlapping conversation, use desktop AI separation below; muting detected regions is not separation.</p>
+<div class="buttons"><button id="timing">♬ Quantize detected note attacks</button><button id="undoTiming">↩ Restore original performance</button></div>
+<label for="subdivision">Timing grid</label><select id="subdivision"><option value="4">Quarter notes</option><option value="8" selected>Eighth notes</option><option value="16">Sixteenth notes</option></select>
+<p id="timingInfo" class="hint">Timing correction shifts detected attacks to nearby beat positions. It can change the feel of her original playing, so keep an untouched copy.</p>
 <label for="voice">Voice handling (applies to exported cuts)</label><select id="voice" style="width:100%"><option value="keep">Preserve original audio, including voices</option><option value="gate">Gentle noise gate in quiet gaps (not speech removal)</option></select>
 <p class="hint">The gate can reduce background noise during quiet passages. When talking overlaps piano notes, reliable voice separation needs a dedicated separation model; this app does not currently provide that.</p>
 </section>
@@ -38,12 +48,12 @@ function draw(){if(!buffer)return;var w=canvas.width,h=canvas.height;ctx.clearRe
 function stop(){if(source){try{source.stop()}catch(e){}source.disconnect();source=null}document.getElementById('play').textContent='▶ Play selection'}
 async function context(){if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')await ac.resume();return ac}
 async function play(){if(!buffer)return;stop();var audio=await context(),r=range(),len=(r[1]-r[0])/buffer.sampleRate;if(len<=0)return;source=audio.createBufferSource();source.buffer=buffer;source.connect(audio.destination);var current=source;source.onended=function(){if(source===current)stop()};source.start(0,r[0]/buffer.sampleRate,len);document.getElementById('play').textContent='↻ Replay selection'}
-async function importFile(f){stop();buffer=null;editor.classList.add('hidden');document.getElementById('tools').classList.add('hidden');if(/\.(mp4|mov)$/i.test(f.name)||f.type.startsWith('video/')){pendingVideo=f;document.getElementById('videoImport').classList.remove('hidden');status.textContent='Video selected. Tap Extract audio to decode it privately in your browser. This runs at playback speed, so longer videos take longer.';return}document.getElementById('videoImport').classList.add('hidden');status.textContent='Reading '+f.name+'…';await new Promise(function(resolve){setTimeout(resolve,25)});try{var array=await f.arrayBuffer(),audio=await context();status.textContent='Decoding audio…';buffer=await audio.decodeAudioData(array);sourceName=f.name;start.value=0;end.value=1000;cuts=[];render();document.getElementById('name').value=f.name.replace(/\.[^.]+$/,'')+' sample';document.getElementById('details').textContent=f.name+' · '+seconds(buffer.duration)+' · '+buffer.sampleRate+' Hz · '+buffer.numberOfChannels+' channel(s)';editor.classList.remove('hidden');document.getElementById('tools').classList.remove('hidden');document.getElementById('suggestions').innerHTML='';document.getElementById('analysis').textContent='';status.textContent='Ready. Select the best notes, preview, then export.';update()}catch(e){status.textContent='Could not decode this recording. Try the M4A or WAV audio extracted from your video. Error: '+e.message;buffer=null}}
+async function importFile(f){stop();buffer=null;editor.classList.add('hidden');document.getElementById('tools').classList.add('hidden');if(/\.(mp4|mov)$/i.test(f.name)||f.type.startsWith('video/')){pendingVideo=f;document.getElementById('videoImport').classList.remove('hidden');status.textContent='Video selected. Tap Extract audio to decode it privately in your browser. This runs at playback speed, so longer videos take longer.';return}document.getElementById('videoImport').classList.add('hidden');status.textContent='Reading '+f.name+'…';await new Promise(function(resolve){setTimeout(resolve,25)});try{var array=await f.arrayBuffer(),audio=await context();status.textContent='Decoding audio…';buffer=await audio.decodeAudioData(array);originalBuffer=buffer;speechRegions=[];renderSpeech();sourceName=f.name;start.value=0;end.value=1000;cuts=[];render();document.getElementById('name').value=f.name.replace(/\.[^.]+$/,'')+' sample';document.getElementById('details').textContent=f.name+' · '+seconds(buffer.duration)+' · '+buffer.sampleRate+' Hz · '+buffer.numberOfChannels+' channel(s)';editor.classList.remove('hidden');document.getElementById('tools').classList.remove('hidden');document.getElementById('suggestions').innerHTML='';document.getElementById('analysis').textContent='';status.textContent='Ready. Select the best notes, preview, then export.';update()}catch(e){status.textContent='Could not decode this recording. Try the M4A or WAV audio extracted from your video. Error: '+e.message;buffer=null}}
 function wav(a,b){var frames=b-a,channels=buffer.numberOfChannels,sr=buffer.sampleRate,out=new ArrayBuffer(44+frames*channels*2),view=new DataView(out),off=0;
 function str(s){for(var i=0;i<s.length;i++)view.setUint8(off++,s.charCodeAt(i))}
 function u16(n){view.setUint16(off,n,true);off+=2}function u32(n){view.setUint32(off,n,true);off+=4}
 str('RIFF');u32(36+frames*channels*2);str('WAVEfmt ');u32(16);u16(1);u16(channels);u32(sr);u32(sr*channels*2);u16(channels*2);u16(16);str('data');u32(frames*channels*2);
-var data=[];for(var c=0;c<channels;c++)data.push(buffer.getChannelData(c));for(var i=a;i<b;i++)for(var c=0;c<channels;c++){var v=Math.max(-1,Math.min(1,data[c][i]));if(edgeFades){var edge=Math.min(i-a,b-i-1),fadeSamples=Math.min(Math.floor(sr*.012),Math.floor(frames/4));if(fadeSamples>0&&edge<fadeSamples)v*=Math.sin((edge/fadeSamples)*Math.PI/2)}if(document.getElementById('voice').value==='gate'&&Math.abs(v)<0.008)v*=0.35;view.setInt16(off,v<0?v*32768:v*32767,true);off+=2}return new Blob([out],{type:'audio/wav'})}
+var data=[];for(var c=0;c<channels;c++)data.push(buffer.getChannelData(c));for(var i=a;i<b;i++)for(var c=0;c<channels;c++){var v=Math.max(-1,Math.min(1,data[c][i]));if(edgeFades){var edge=Math.min(i-a,b-i-1),fadeSamples=Math.min(Math.floor(sr*.012),Math.floor(frames/4));if(fadeSamples>0&&edge<fadeSamples)v*=Math.sin((edge/fadeSamples)*Math.PI/2)}if(document.getElementById('voice').value==='gate'&&Math.abs(v)<0.008)v*=0.35;if(document.getElementById('speechExport').value==='mute'&&speechRegions.length){var t=i/sr;for(var si=0;si<speechRegions.length;si++){var reg=speechRegions[si],fade=.03;if(t>=reg.start-fade&&t<=reg.end+fade){var g=t<reg.start?1-(t-(reg.start-fade))/fade:t>reg.end?(t-reg.end)/fade:0.05;v*=Math.max(.05,Math.min(1,g));break}}}view.setInt16(off,v<0?v*32768:v*32767,true);off+=2}return new Blob([out],{type:'audio/wav'})}
 function safe(n){return n.replace(/[^a-z0-9 _-]/gi,'').trim().replace(/\s+/g,'_')||'little-keys'}
 function download(a,b,name){if(!buffer||b<=a)return;var blob=wav(a,b),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=safe(name)+'.wav';document.body.appendChild(link);link.click();link.remove();status.textContent='Exported '+link.download+' ('+(blob.size/1048576).toFixed(1)+' MB). On iPhone, check Files / Downloads.';setTimeout(function(){URL.revokeObjectURL(url)},60000)}
 function render(){var list=document.getElementById('samples');list.innerHTML='';document.getElementById('count').textContent=String(cuts.length);if(!cuts.length){var li=document.createElement('li');li.textContent='No saved cuts yet.';list.appendChild(li);return}cuts.forEach(function(c,i){var li=document.createElement('li'),info=document.createElement('div'),title=document.createElement('strong'),meta=document.createElement('div'),btn=document.createElement('button');title.textContent=c.name;meta.textContent=c.category+' · '+seconds(c.a/buffer.sampleRate)+' – '+seconds(c.b/buffer.sampleRate);meta.className='numbers';info.appendChild(title);info.appendChild(meta);btn.textContent='↓ WAV';btn.addEventListener('click',function(){download(c.a,c.b,c.name)});li.appendChild(info);li.appendChild(btn);list.appendChild(li)})}
@@ -57,7 +67,7 @@ document.getElementById('all').addEventListener('click',function(){start.value=0
 document.getElementById('save').addEventListener('click',function(){if(!buffer)return;var r=range();if(r[1]<=r[0])return;cuts.push({a:r[0],b:r[1],name:document.getElementById('name').value||'Eden sample',category:document.getElementById('category').value});persistCut(r[0],r[1],document.getElementById('name').value||'Eden sample',document.getElementById('category').value);render();status.textContent='Saved cut '+cuts.length+'. Export WAV before closing this tab.'});
 document.getElementById('export').addEventListener('click',function(){if(!buffer)return;var r=range();download(r[0],r[1],document.getElementById('name').value)});
 
-var edgeFades=true;
+var edgeFades=true,speechRegions=[],originalBuffer=null;
 document.getElementById('fade').addEventListener('click',function(){edgeFades=!edgeFades;this.textContent='◖ Toggle edge fades: '+(edgeFades?'ON':'OFF')});
 function selectSeconds(a,b){if(!buffer)return;var d=buffer.duration;start.value=Math.max(0,Math.min(999,Math.round(a/d*1000)));end.value=Math.max(Number(start.value)+1,Math.min(1000,Math.round(b/d*1000)));update()}
 document.getElementById('snap').addEventListener('click',function(){if(!buffer)return;var bpm=Number(document.getElementById('bpm').value),bars=Number(document.getElementById('bars').value);if(!Number.isFinite(bpm)||bpm<40||bpm>240){status.textContent='BPM must be 40–240.';return}var dur=240*bars/bpm,a=buffer.duration*Number(start.value)/1000;if(dur>buffer.duration){status.textContent='Loop is longer than the recording. Lower bar count or increase BPM.';return}selectSeconds(Math.min(a,buffer.duration-dur),Math.min(buffer.duration,Math.min(a,buffer.duration-dur)+dur));status.textContent='Loop selection snapped to '+bars+' bar(s) at '+bpm+' BPM (4/4). No time stretching applied.'});
@@ -97,7 +107,7 @@ async function convertVideo(){
   recorder.stop();await result;progress.value=100;
   if(!chunks.length)throw Error('No audio captured');
   status.textContent='Decoding extracted audio…';var blob=new Blob(chunks,{type:mime});var array=await blob.arrayBuffer();
-  buffer=await audio.decodeAudioData(array);
+  buffer=await audio.decodeAudioData(array);originalBuffer=buffer;speechRegions=[];renderSpeech();
   if(!buffer.length)throw Error('No audio decoded');
   sourceName=pendingVideo.name;start.value=0;end.value=1000;cuts=[];render();
   document.getElementById('name').value=pendingVideo.name.replace(/\.[^.]+$/,'')+' sample';
@@ -108,6 +118,45 @@ async function convertVideo(){
 }
 document.getElementById('extractVideo').addEventListener('click',convertVideo);
 document.getElementById('cancelVideo').addEventListener('click',function(){if(videoProcess){videoProcess.dispatchEvent(new Event('abort'));videoProcess.pause()}else{pendingVideo=null;document.getElementById('videoImport').classList.add('hidden');status.textContent='Import cancelled.'}});
+
+
+function loadExternalScript(src){return new Promise(function(resolve,reject){var s=document.createElement('script');s.src=src;s.crossOrigin='anonymous';s.onload=resolve;s.onerror=function(){reject(new Error('AI runtime could not load from CDN'))};document.head.appendChild(s)})}
+function renderSpeech(){var ul=document.getElementById('speechList');if(!ul)return;ul.innerHTML='';speechRegions.forEach(function(t,i){var li=document.createElement('li'),span=document.createElement('span'),button=document.createElement('button');span.textContent='Possible speech '+(i+1)+': '+seconds(t.start)+'–'+seconds(t.end);button.textContent='Select';button.onclick=function(){selectSeconds(t.start,t.end)};li.appendChild(span);li.appendChild(button);ul.appendChild(li)})}
+document.getElementById('clearSpeech').addEventListener('click',function(){speechRegions=[];renderSpeech();document.getElementById('speechResult').textContent='Speech marks cleared.'});
+document.getElementById('detectSpeech').addEventListener('click',async function(){
+ if(!buffer)return;var btn=this,box=document.getElementById('speechResult');btn.disabled=true;
+ try{
+  box.textContent='Loading Silero VAD AI (the first run downloads model files)…';
+  if(!window.ort)await loadExternalScript('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js');
+  if(!window.vad)await loadExternalScript('https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.31/dist/bundle.min.js');
+  var model=await window.vad.NonRealTimeVAD.new({model:'v5',onnxWASMBasePath:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',baseAssetPath:'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.31/dist/'});
+  var channel=buffer.getChannelData(0),mono=new Float32Array(channel.length);mono.set(channel);
+  for(var c=1;c<buffer.numberOfChannels;c++){var other=buffer.getChannelData(c);for(var i=0;i<mono.length;i++)mono[i]+=other[i]}
+  if(buffer.numberOfChannels>1)for(var i=0;i<mono.length;i++)mono[i]/=buffer.numberOfChannels;
+  box.textContent='Analyzing possible speech in the recording…';speechRegions=[];
+  for await (var seg of model.run(mono,buffer.sampleRate)){speechRegions.push({start:seg.start/1000,end:seg.end/1000});renderSpeech()}
+  box.textContent=speechRegions.length?'Detected '+speechRegions.length+' possible speech segments. Review each: piano can cause false positives.':'No speech segments detected. This does not guarantee there are no voices.';
+ }catch(e){box.textContent='Speech AI unavailable on this browser/network: '+e.message+'. Manual loop editing still works.'}
+ finally{btn.disabled=false}
+});
+document.getElementById('undoTiming').addEventListener('click',function(){if(!originalBuffer)return;stop();buffer=originalBuffer;update();document.getElementById('timingInfo').textContent='Restored the original performance.'});
+document.getElementById('timing').addEventListener('click',async function(){
+ if(!buffer)return;stop();var bpm=Number(document.getElementById('bpm').value),sub=Number(document.getElementById('subdivision').value);
+ if(bpm<40||bpm>240){status.textContent='Choose a BPM from 40 to 240.';return}
+ var sr=buffer.sampleRate,step=60/bpm*4/sub,hop=Math.max(1,Math.round(sr*.01)),ch=buffer.getChannelData(0),values=[],attacks=[];
+ for(var i=0;i<ch.length;i+=hop){var en=0;for(var j=i;j<Math.min(ch.length,i+hop);j+=4)en+=ch[j]*ch[j];values.push(Math.sqrt(en/Math.max(1,Math.ceil(Math.min(hop,ch.length-i)/4))))}
+ var mean=values.reduce(function(a,b){return a+b},0)/values.length;
+ for(var k=3;k<values.length-3;k++){if(values[k]>mean*.9&&values[k]>(values[k-1]+values[k-2])*1.6&&values[k]>values[k+1]&&(!attacks.length||(k*hop/sr-attacks[attacks.length-1])>.09))attacks.push(k*hop/sr)}
+ if(attacks.length<2){document.getElementById('timingInfo').textContent='Not enough clear note attacks to quantize. Try manual BPM matching.';return}
+ // Assemble slices between attacks, moving boundaries to the nearest beat grid without replacing any note content.
+ var grid=attacks.map(function(t){return Math.max(0,Math.round(t/step)*step)});for(var q=1;q<grid.length;q++)grid[q]=Math.max(grid[q-1]+.015,grid[q]);
+ var a=await context(),out=a.createBuffer(buffer.numberOfChannels,buffer.length,sr);
+ var segments=[0].concat(attacks).concat([buffer.duration]),destStarts=[0].concat(grid).concat([buffer.duration]);
+ for(var n=0;n<segments.length-1;n++){var begin=Math.round(segments[n]*sr),finish=Math.min(buffer.length,Math.round(segments[n+1]*sr)),target=Math.max(0,Math.round(destStarts[n]*sr));
+  var count=Math.min(finish-begin,out.length-target);if(count<=0)continue;
+  for(var c=0;c<buffer.numberOfChannels;c++){var dst=out.getChannelData(c),src=buffer.getChannelData(c);for(var j=0;j<count;j++){var edge=Math.min(j,count-1-j),gain=Math.min(1,edge/Math.max(1,Math.round(sr*.004)));dst[target+j]+=src[begin+j]*gain}}}
+ buffer=out;update();document.getElementById('timingInfo').textContent='Quantized '+attacks.length+' detected attacks to '+sub+'th-note grid at '+bpm+' BPM. Listen for artifacts; Restore original if needed.';
+});
 
 })();
 </script></body></html>
