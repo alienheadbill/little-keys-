@@ -63,6 +63,7 @@ function play(){
  // HTMLAudioElement playback follows Safari/iOS media handling more reliably than
  // starting an AudioBufferSourceNode after an awaited AudioContext resume.
  var player=new Audio();previewAudio=player;player.preload='auto';player.volume=1;player.src=previewURL;
+ player.ontimeupdate=function(){if(previewAttempt===attempt && !player.paused){status.textContent='Playing '+seconds(player.currentTime)+' / '+seconds(len)}};
  player.onended=function(){if(previewAttempt===attempt){status.textContent='Finished playing selection.';stop()}};
  player.onerror=function(){if(previewAttempt===attempt){status.textContent='Playback error: Safari could not play this WAV. Try Export WAV and open it in Files.';stop()}};
  var startPromise=player.play();
