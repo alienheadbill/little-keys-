@@ -17,6 +17,10 @@ try{
  await page.goto('http://127.0.0.1:'+server.address().port);
  await page.locator('#file').setInputFiles({name:'ai-probe.wav',mimeType:'audio/wav',buffer:b});
  await page.locator('#editor').waitFor({state:'visible'});
+ await page.locator('#detectSpeech').click();
+ await page.waitForFunction(()=>/speech segments detected|possible speech segments|AI unavailable/.test(document.querySelector('#speechResult').textContent),null,{timeout:120000});
+ const vadStatus=await page.locator('#speechResult').innerText();console.log('VAD_RESULT',vadStatus);
+ if(vadStatus.includes('AI unavailable'))throw new Error(vadStatus);
  await page.locator('#aiSeparate').click();
  await page.waitForFunction(()=>/Separation complete|could not run/.test(document.querySelector('#aiStatus').textContent),null,{timeout:180000});
  const text=await page.locator('#aiStatus').innerText();console.log('AI_RESULT',text);
